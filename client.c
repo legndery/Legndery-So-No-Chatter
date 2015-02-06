@@ -12,6 +12,7 @@
 #include <signal.h>
 #include <arpa/inet.h>
 #include <pthread.h>
+#include "chatutil.h"
 
 #define PORT "3936" // the port client will be connecting to
 #define MAXDATASIZE 128 // max number of bytes we can get at once
@@ -40,16 +41,18 @@ int main(int argc, char *argv[])
 	char s[INET6_ADDRSTRLEN];
 	char buf[MAXDATASIZE];
 	if (argc != 2) {
-		fprintf(stderr,"usage: client hostname\n");
+		fprintf(stderr,"usage: client hostname/ip\n");
 		exit(1);
 	}
 	if (gethostname(hostname, 20)<0){
 		perror("hostname");
 		exit(5);
 	}
+
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
+
 	if ((rv = getaddrinfo(argv[1], PORT, &hints, &servinfo)) != 0) {
 		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
 	return 1;
@@ -76,7 +79,7 @@ int main(int argc, char *argv[])
 
 	inet_ntop(p->ai_family, get_in_addr((struct sockaddr *)p->ai_addr),	s, sizeof s);
 
-	printf("client: connected to %s\n", s);
+	printf("Client: connected to %s\n", s);
 
 	freeaddrinfo(servinfo); // all done with this structure
 
@@ -101,29 +104,31 @@ int main(int argc, char *argv[])
 void *sendmessage(){
 
     char str[80];
-    char msg[128];
-
+    char msg[MAXDATASIZE];
+    size_t ln;
     while(1) {
     	printf("me> ");
     	fflush(stdin);
+		fflush(stdout);
         // Get user's message
         memset(msg,0,strlen(msg));
         fgets(str, 80, stdin);
-
+        ln = strlen(str) - 1;
+        if (str[ln]=='\n'){
+        	str[ln] = '\0';
+        }
         // Build the message: "name: message"
         strcpy(msg,hostname);
         strcat(msg, "> ");
         strncat(msg,str,strlen(str));
-
+        // printf("------LOG-----\n%s\n----------\n",str); ////////LOGGING
         // Check for quiting
-        if(strcmp(str,"exit")==0)
-        {
-
+        if(strcmp(str,"exit")==0){
             done = 1;
-      
             pthread_mutex_destroy(&mutexsum);
             pthread_exit(NULL);
             close(sockfd);
+            break;
         }    
 
         // Send message to server
@@ -142,7 +147,7 @@ void *sendmessage(){
 }
 
 void *recieveMsg(){
-    char str[100];
+    char str[MAXDATASIZE];
 
     while(1){
         //Receive message from server
@@ -152,9 +157,12 @@ void *recieveMsg(){
 			exit(1);
 		}
 			str[numbytes] = '\0';
-			// printf("%c[2K", 27);
-			printf("\r%s\n",str);puts("");
-			printf("me> ");
+			if(str[numbytes-1] == '\n'){
+				str[numbytes-1] == '\0';
+			}
+			printf("%c[2K", 27);
+			printf("\r%s\nme>",str);
+			fflush(stdout);
         pthread_mutex_lock (&mutexsum);
         pthread_mutex_unlock (&mutexsum);
 
